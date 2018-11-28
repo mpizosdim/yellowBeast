@@ -310,7 +310,7 @@ def main_train_compined():
 
 def main_predict_global():
     modelobj = GlobalModel('England_Scotland')
-    modelobj.load_model("best_estimator_global_England_Scotland.pkl")
+    modelobj.load_model("best_estimator_England_Scotland.pkl")
     pred = modelobj.predict('2018', 'Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelobj.confidense)
@@ -319,7 +319,7 @@ def main_predict_global():
 
 def main_predict_local():
     modelobj = LocalModel('England')
-    modelobj.load_model("best_estimator_local_England_2018.pkl")
+    modelobj.load_model("best_estimator_England_2018.pkl")
     pred = modelobj.predict('Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelobj.confidense)
@@ -328,11 +328,11 @@ def main_predict_local():
 
 def main_predict_compined():
     globalmodel = GlobalModel('England_Scotland')
-    globalmodel.load_model("best_estimator_global_mean_England_Scotland.pkl")
+    globalmodel.load_model("best_estimator_global_England_Scotland.pkl")
     localmodel = LocalModel('England')
-    localmodel.load_model("best_estimator_local_one-hot_England_2018.pkl")
-    modelcompined = CompinedModel('England_compined', globalmodel, localmodel)
-    modelcompined.load_model("best_estimator_compined_England_compined.pkl")
+    localmodel.load_model("best_estimator_local_England_2018.pkl")
+    modelcompined = CompinedModel('England', globalmodel, localmodel)
+    modelcompined.load_model("best_estimator_compined_England.pkl")
     pred = modelcompined.predict('2018', 'Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelcompined.confidense)
