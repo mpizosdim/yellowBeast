@@ -158,8 +158,6 @@ class LocalModel(GeneralModel):
             data = data.drop(columns=['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY'])
         else:
             data = data.drop(columns=['HomeTeam', 'AwayTeam', 'HY', 'AY'])
-        self._params['decisionTree']['max_features'] = list(range(1, data.shape[1]))
-        self._params['randomForest']['max_features'] = list(range(1, data.shape[1]))
         x_train, y_train, x_test, y_test = self.__split_data(data, test_size)
         columns = data.drop(columns=['YALL']).columns
         return x_train, x_test, y_train, y_test, columns
@@ -301,8 +299,8 @@ class CompinedModel(GeneralModel):
                     'best_estimator_%s_%s.pkl' % (self.modes[0], self.name))
 
     def predict(self, year, team1, team2, referee):
-        global_pred = self.globalmodel.predict(year, team1, team2, referee)[0]
-        local_pred = self.localmodel.predict(team1, team2, referee)[0][0]
+        global_pred = self.globalmodel.predict(year, team1, team2, referee)
+        local_pred = self.localmodel.predict(team1, team2, referee)[0]
         yellows = self.model.predict(np.array([global_pred, local_pred]).reshape(1, -1))[0]
         return yellows
 
@@ -312,7 +310,7 @@ class CompinedModel(GeneralModel):
 
 def main_train_compined():
     split_size = 0.05
-    average_times = 10
+    average_times = 1
 
     globalmodel = GlobalModel('England_Scotland')
     globalmodel.load_model("best_estimator_global_mean_England_Scotland.pkl")
@@ -328,7 +326,7 @@ def main_train_compined():
 
 def main_train_local():
     split_size = 0.05
-    average_times = 10
+    average_times = 1
     path = 'data/England_2018.csv'
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -338,7 +336,7 @@ def main_train_local():
 
 def main_train_global():
     split_size = 0.1
-    average_times = 10
+    average_times = 1
     paths = glob.glob('data/England*') + glob.glob('data/Scotland*')
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -372,14 +370,14 @@ def main_predict_compined():
     localmodel.load_model("best_estimator_local_one-hot_England_2018.pkl")
     modelcompined = CompinedModel('England_compined', globalmodel, localmodel)
     modelcompined.load_model("best_estimator_compined_England_compined.pkl")
-    pred = modelcompined.predict('2018','Cardiff', 'Wolves', 'A Marriner')
+    pred = modelcompined.predict('2018', 'Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelcompined.confidense)
     print(pred + modelcompined.confidense)
 
 
 if __name__ == '__main__':
-    #main_train_global()
-    #main_train_local()
+    main_train_global()
+    main_train_local()
     main_train_compined()
     #main_predict_compined()
