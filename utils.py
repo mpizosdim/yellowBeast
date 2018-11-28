@@ -3,7 +3,7 @@ import warnings
 from sklearn.ensemble import RandomForestRegressor
 from sklearn import tree
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, make_scorer
 from sklearn.naive_bayes import GaussianNB
 from sklearn import linear_model
 from sklearn.linear_model import LinearRegression
@@ -31,7 +31,7 @@ class GeneralModel:
                 'min_samples_split': np.linspace(0.1, 1.0, 5),
                 'min_samples_leaf': np.linspace(0.1, 0.5, 5)
             },
-            'GaussianNB': None,
+            'GaussianNB': {},
             'Ridge': {
                 'normalize': [False, True],
                 'alpha': np.linspace(0.0, 1.0, 10)
@@ -75,58 +75,49 @@ class GeneralModel:
         data['YALL'] = data.apply(lambda row: row['HY'] + row['AY'], axis=1)
         return data
 
-    def _fit(self, path, test_size, model, params, times, columns, setter_data):
+    def _set_data(self):
+        pass
+
+    def fit(self, path, test_size):
+        best_clf, best_columns, confidence = self._fit_all(path, test_size, self.columns, self._set_data)
+        self.best_clf = best_clf
+        self.feature_columns = best_columns
+        self.confidense = confidence
+
+    def _fit(self, path, test_size, model, params, columns, setter_data):
         data = self.get_data(path, columns)
-        mse_train_main = []
-        mse_test_main = []
-        for _ in range(times):
+        while True:
             try:
                 x_train, x_test, y_train, y_test, columns_one_hot = setter_data(data.sample(frac=1).reset_index(drop=True), test_size)
                 self.columns_one_hot = columns_one_hot
-                if not params:
-                    clf = model
-                    clf.fit(x_train, y_train)
-                    y_predict_train = clf.predict(x_train)
-                    y_predict_test = clf.predict(x_test)
-                else:
-                    clf = GridSearchCV(model, params, cv=10)
-                    clf.fit(x_train, y_train)
-                    y_predict_train = clf.best_estimator_.predict(x_train)
-                    y_predict_test = clf.best_estimator_.predict(x_test)
+                clf = GridSearchCV(model, params, cv=15, scoring=make_scorer(mean_squared_error, greater_is_better=False))
+                clf.fit(x_train, y_train)
+                y_predict_test = clf.best_estimator_.predict(x_test)
+                mse_test = mean_squared_error(y_test, y_predict_test)
+                mse_train = -clf.best_score_
+                break
             except:
-                print('train continued due to absence of some factors.')
-                continue
-            mse_train = mean_squared_error(y_train, y_predict_train)
-            mse_test = mean_squared_error(y_test, y_predict_test)
-            mse_train_main.append(mse_train)
-            mse_test_main.append(mse_test)
-        return clf, np.mean(mse_train_main), np.mean(mse_test_main)
+                print('reshuffle to find other values.')
+        return clf, mse_train, mse_test
 
-    def _fit_all(self, path, test_size, times, columns, setter_data):
+    def _fit_all(self, path, test_size, columns, setter_data):
         best_mse_test = float('Inf')
-        for mode in self.modes:
-            print("====" * 20)
-            print("mode : %s" % mode)
-            for model_key, model in self.models.items():
-                print("====" * 5)
-                print("\tmodel: %s" % model_key)
-                params = self._params[model_key]
-                # TODO: check which clf to give back???
-                clf, mse_train, mse_test = self._fit(path, test_size, model, params, times, columns, setter_data)
-                if mse_test < best_mse_test:
-                    best_clf = clf
-                    best_mse_test = mse_test
-                    best_mse_train = mse_train
-                    mode_best = mode
-                    best_columns = self.columns_one_hot
-                print("\ttrain error: %s" % mse_train)
-                print("\ttest error: %s" % mse_test)
-
+        for model_key, model in self.models.items():
+            print("====" * 5)
+            print("\tmodel: %s" % model_key)
+            params = self._params[model_key]
+            clf, mse_train, mse_test = self._fit(path, test_size, model, params, columns, setter_data)
+            if mse_test < best_mse_test:
+                best_clf = clf
+                best_mse_test = mse_test
+                best_mse_train = mse_train
+                best_columns = self.columns_one_hot
+            print("\ttrain error: %s" % mse_train)
+            print("\ttest error: %s" % mse_test)
         print("====" * 10)
         print("====" * 10)
         print("\t\ttrain error best per mode: %s" % best_mse_train)
         print("\t\ttest error best per mode: %s" % best_mse_test)
-        print("\t\tmode best per model: %s" % mode_best)
         if hasattr(best_clf, 'best_estimator_'):
             print("\t\tmodel type best: %s" % str(best_clf.best_estimator_))
             return best_clf.best_estimator_, best_columns, math.sqrt(best_mse_test)
@@ -138,26 +129,21 @@ class GeneralModel:
 class LocalModel(GeneralModel):
     def __init__(self, name):
         super().__init__(name)
-        self.modes = ['one-hot']
         self.columns = ['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY']
 
     @staticmethod
-    def __preprocess_one_hot_method(data, with_referee=True):
+    def __preprocess_one_hot_method(data):
         pd_home = pd.get_dummies(data['HomeTeam'], prefix='home')
         data = pd.concat([data, pd_home], axis=1)
         pd_away = pd.get_dummies(data['AwayTeam'], prefix='away')
         data = pd.concat([data, pd_away], axis=1)
-        if with_referee:
-            referee = pd.get_dummies(data['Referee'], prefix='referee')
-            data = pd.concat([data, referee], axis=1)
+        referee = pd.get_dummies(data['Referee'], prefix='referee')
+        data = pd.concat([data, referee], axis=1)
         return data
 
-    def __set_data_one_hot(self, data, test_size, with_referee=True):
-        data = self.__preprocess_one_hot_method(data, with_referee)
-        if with_referee:
-            data = data.drop(columns=['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY'])
-        else:
-            data = data.drop(columns=['HomeTeam', 'AwayTeam', 'HY', 'AY'])
+    def _set_data(self, data, test_size):
+        data = self.__preprocess_one_hot_method(data)
+        data = data.drop(columns=['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY'])
         x_train, y_train, x_test, y_test = self.__split_data(data, test_size)
         columns = data.drop(columns=['YALL']).columns
         return x_train, x_test, y_train, y_test, columns
@@ -169,12 +155,6 @@ class LocalModel(GeneralModel):
         x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=test_size)
         return x_train, y_train, x_test, y_test
 
-    def fit(self, path, test_size, times):
-        best_clf, best_columns, confidence = self._fit_all(path, test_size, times, self.columns, self.__set_data_one_hot)
-        self.best_clf = best_clf
-        self.feature_columns = best_columns
-        self.confidense = confidence
-
     def load_model(self, path):
         model, best_columns, confidence = joblib.load(path)
         self.columns = best_columns
@@ -183,7 +163,7 @@ class LocalModel(GeneralModel):
 
     def save_model(self):
         joblib.dump([self.best_clf, self.feature_columns, self.confidense],
-                    'best_estimator_local_%s_%s.pkl' % (self.modes[0], self.name))
+                    'best_estimator_local_%s.pkl' % self.name)
 
     def predict(self, team1, team2, referee):
         match = pd.get_dummies(pd.DataFrame({'home': [team1], 'away': [team2], 'referee': [referee]}))
@@ -195,35 +175,27 @@ class LocalModel(GeneralModel):
 class GlobalModel(GeneralModel):
     def __init__(self, name):
         super().__init__(name)
-        self.modes = ['mean']
         self.columns = ['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY', 'year']
         self.home_mean = None
         self.away_mean = None
         self.referee_mean = None
 
-    def fit(self, path, test_size, times):
-        best_clf, best_columns, confidence = self._fit_all(path, test_size, times, self.columns, self.__set_data_mean)
-        self.best_clf = best_clf
-        self.feature_columns = best_columns
-        self.confidense = confidence
-
-
     @staticmethod
-    def _mean(data, group_col, mean_col):
+    def __mean(data, group_col, mean_col):
         return data.groupby(group_col).apply(lambda x: x[mean_col].mean())
 
-    def __set_data_mean(self, data, test_size):
+    def _set_data(self, data, test_size):
         data_train_final = pd.DataFrame()
         data_test_final = pd.DataFrame()
         data_train, data_test = train_test_split(data, test_size=test_size)
 
-        self.home_mean = dict(self._mean(data_train, ['HomeTeam', 'year'], 'HY'))
-        self.away_mean = dict(self._mean(data_train, ['AwayTeam', 'year'], 'AY'))
-        self.referee_mean = dict(self._mean(data_train, ['Referee', 'year'], 'YALL'))
+        self.home_mean = dict(self.__mean(data_train, ['HomeTeam', 'year'], 'HY'))
+        self.away_mean = dict(self.__mean(data_train, ['AwayTeam', 'year'], 'AY'))
+        self.referee_mean = dict(self.__mean(data_train, ['Referee', 'year'], 'YALL'))
         away_temp = data_train[['HomeTeam', 'HY', 'year']].rename(columns={'HomeTeam': 'Team', 'HY': 'Y'})
         home_temp = data_train[['AwayTeam', 'AY', 'year']].rename(columns={'AwayTeam': 'Team', 'AY': 'Y'})
         compinedYellow = pd.concat([away_temp, home_temp], ignore_index=True)
-        self.compined_mean = dict(self._mean(compinedYellow, ['Team', 'year'], 'Y'))
+        self.compined_mean = dict(self.__mean(compinedYellow, ['Team', 'year'], 'Y'))
 
         data_train_final['mean_home'] = data_train.apply(lambda row: self.home_mean[(row['HomeTeam'],row['year'])], axis=1)
         data_test_final['mean_home'] = data_test.apply(lambda row: self.home_mean[(row['HomeTeam'], row['year'])], axis=1)
@@ -258,7 +230,7 @@ class GlobalModel(GeneralModel):
 
     def save_model(self):
         joblib.dump([self.best_clf, self.feature_columns, self.confidense, self.home_mean, self.away_mean, self.referee_mean, self.compined_mean],
-                    'best_estimator_global_%s_%s.pkl' % (self.modes[0], self.name))
+                    'best_estimator_global_%s.pkl' % self.name)
 
     def predict(self, year, team1, team2, referee):
         input = np.array([self.home_mean[(team1, year)], self.away_mean[(team2, year)], self.compined_mean[(team1, year)], self.compined_mean[(team2, year)], self.referee_mean[(referee, year)]])
@@ -271,10 +243,9 @@ class CompinedModel(GeneralModel):
         super().__init__(name)
         self.globalmodel = globalmodel
         self.localmodel = localmodel
-        self.modes = ['compined']
         self.columns = ['HomeTeam', 'AwayTeam', 'Referee', 'HY', 'AY']
 
-    def __set_data(self, data, test_size):
+    def _set_data(self, data, test_size):
         prediction_global = data.apply(lambda row: self.globalmodel.predict('2018', row['HomeTeam'], row['AwayTeam'], row['Referee']), axis=1)
         prediction_local = data.apply(lambda row: self.localmodel.predict(row['HomeTeam'], row['AwayTeam'], row['Referee'])[0], axis=1)
         X = pd.concat([prediction_global, prediction_local], axis=1, ignore_index=True).values
@@ -283,12 +254,6 @@ class CompinedModel(GeneralModel):
         columns = ['not usefull']
         return x_train, x_test, y_train, y_test, columns
 
-    def fit(self, path, test_size, times):
-        best_clf, best_columns, confidence = self._fit_all(path, test_size, times, self.columns, self.__set_data)
-        self.best_clf = best_clf
-        self.feature_columns = best_columns
-        self.confidense = confidence
-
     def load_model(self, path):
         model, confidence,  = joblib.load(path)
         self.model = model
@@ -296,7 +261,7 @@ class CompinedModel(GeneralModel):
 
     def save_model(self):
         joblib.dump([self.best_clf, self.confidense],
-                    'best_estimator_%s_%s.pkl' % (self.modes[0], self.name))
+                    'best_estimator_compined_%s.pkl' % self.name)
 
     def predict(self, year, team1, team2, referee):
         global_pred = self.globalmodel.predict(year, team1, team2, referee)
@@ -308,46 +273,44 @@ class CompinedModel(GeneralModel):
 # main
 # ========================================================================
 
-def main_train_compined():
-    split_size = 0.05
-    average_times = 1
-
-    globalmodel = GlobalModel('England_Scotland')
-    globalmodel.load_model("best_estimator_global_mean_England_Scotland.pkl")
-    localmodel = LocalModel('England')
-    localmodel.load_model("best_estimator_local_one-hot_England_2018.pkl")
-
-    path = 'data/England_2018.csv'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        modelob = CompinedModel('England_compined', globalmodel, localmodel)
-        modelob.fit(path, split_size, average_times)
-        modelob.save_model()
-
-def main_train_local():
-    split_size = 0.05
-    average_times = 1
-    path = 'data/England_2018.csv'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        modelob = LocalModel('England_2018')
-        modelob.fit(path, split_size, average_times)
-        modelob.save_model()
 
 def main_train_global():
-    split_size = 0.1
-    average_times = 1
+    split_size = 0.2
     paths = glob.glob('data/England*') + glob.glob('data/Scotland*')
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         modelobj = GlobalModel('England_Scotland')
-        modelobj.fit(paths, split_size, average_times)
+        modelobj.fit(paths, split_size)
         modelobj.save_model()
+
+
+def main_train_local():
+    split_size = 0.15
+    path = 'data/England_2018.csv'
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        modelob = LocalModel('England_2018')
+        modelob.fit(path, split_size)
+        modelob.save_model()
+
+
+def main_train_compined():
+    split_size = 0.15
+    globalmodel = GlobalModel('England_Scotland')
+    globalmodel.load_model("best_estimator_global_England_Scotland.pkl")
+    localmodel = LocalModel('England')
+    localmodel.load_model("best_estimator_local_England_2018.pkl")
+    path = 'data/England_2018.csv'
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        modelob = CompinedModel('England_compined', globalmodel, localmodel)
+        modelob.fit(path, split_size)
+        modelob.save_model()
 
 
 def main_predict_global():
     modelobj = GlobalModel('England_Scotland')
-    modelobj.load_model("best_estimator_global_mean_England_Scotland.pkl")
+    modelobj.load_model("best_estimator_global_England_Scotland.pkl")
     pred = modelobj.predict('2018', 'Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelobj.confidense)
@@ -356,7 +319,7 @@ def main_predict_global():
 
 def main_predict_local():
     modelobj = LocalModel('England')
-    modelobj.load_model("best_estimator_local_one-hot_England_2018.pkl")
+    modelobj.load_model("best_estimator_local_England_2018.pkl")
     pred = modelobj.predict('Cardiff', 'Wolves', 'A Marriner')
     print(pred)
     print(pred - modelobj.confidense)
