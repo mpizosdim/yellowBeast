@@ -21,9 +21,9 @@ class GeneralModel:
         self.models = {'decisionTree': tree.DecisionTreeRegressor(),
                        'GaussianNB': GaussianNB(),
                        'Ridge': linear_model.Ridge(),
-                       #'SVR': svm.SVR(),
-                       #'linearRegression': LinearRegression(),
-                       #'randomForest': RandomForestRegressor()
+                       'SVR': svm.SVR(),
+                       'linearRegression': LinearRegression(),
+                       'randomForest': RandomForestRegressor()
                        }
         self._params = {
             'decisionTree': {
@@ -101,22 +101,22 @@ class GeneralModel:
         return clf, mse_train, mse_test
 
     def _fit_all(self, path, test_size, columns, setter_data):
-        best_mse_test = float('Inf')
+        best_mse_valid = float('Inf')
         for model_key, model in self.models.items():
             print("====" * 5)
             print("\tmodel: %s" % model_key)
             params = self._params[model_key]
             clf, mse_train, mse_test = self._fit(path, test_size, model, params, columns, setter_data)
-            if mse_test < best_mse_test:
+            if mse_train < best_mse_valid:
                 best_clf = clf
                 best_mse_test = mse_test
-                best_mse_train = mse_train
+                best_mse_valid = mse_train
                 best_columns = self.columns_one_hot
             print("\ttrain error: %s" % mse_train)
             print("\ttest error: %s" % mse_test)
         print("====" * 10)
         print("====" * 10)
-        print("\t\ttrain error best per mode: %s" % best_mse_train)
+        print("\t\ttrain/val error best per mode: %s" % best_mse_valid)
         print("\t\ttest error best per mode: %s" % best_mse_test)
         if hasattr(best_clf, 'best_estimator_'):
             print("\t\tmodel type best: %s" % str(best_clf.best_estimator_))
@@ -343,4 +343,3 @@ if __name__ == '__main__':
     main_train_global()
     main_train_local()
     main_train_compined()
-    #main_predict_compined()
