@@ -21,9 +21,9 @@ class GeneralModel:
         self.models = {'decisionTree': tree.DecisionTreeRegressor(),
                        'GaussianNB': GaussianNB(),
                        'Ridge': linear_model.Ridge(),
-                       'SVR': svm.SVR(),
-                       'linearRegression': LinearRegression(),
-                       'randomForest': RandomForestRegressor()
+                       #'SVR': svm.SVR(),
+                       #'linearRegression': LinearRegression(),
+                       #'randomForest': RandomForestRegressor()
                        }
         self._params = {
             'decisionTree': {
@@ -275,7 +275,7 @@ class CompinedModel(GeneralModel):
 
 
 def main_train_global():
-    split_size = 0.2
+    split_size = 0.1
     paths = glob.glob('data/England*') + glob.glob('data/Scotland*')
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -285,7 +285,7 @@ def main_train_global():
 
 
 def main_train_local():
-    split_size = 0.15
+    split_size = 0.1
     path = 'data/England_2018.csv'
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -295,7 +295,7 @@ def main_train_local():
 
 
 def main_train_compined():
-    split_size = 0.15
+    split_size = 0.1
     globalmodel = GlobalModel('England_Scotland')
     globalmodel.load_model("best_estimator_global_England_Scotland.pkl")
     localmodel = LocalModel('England')
@@ -303,7 +303,7 @@ def main_train_compined():
     path = 'data/England_2018.csv'
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        modelob = CompinedModel('England_compined', globalmodel, localmodel)
+        modelob = CompinedModel('England', globalmodel, localmodel)
         modelob.fit(path, split_size)
         modelob.save_model()
 
